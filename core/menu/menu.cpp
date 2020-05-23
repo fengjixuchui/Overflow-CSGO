@@ -201,15 +201,37 @@ ImVec2 get_listbox_size(float x, float y_offset)
 	return ImVec2(x, (ImGui::GetCurrentWindow()->Size.y - ImGui::GetStyle().WindowPadding.y * 2) - ImGui::GetCursorPosY() - y_offset);
 }
 
-bool selectable(const char* label, bool selected)
+bool selectable(const char* label, bool selected, int quality = -1)
 {
 	ImGui::PushStyleColor(ImGuiCol_Header, ImGui::GetStyleColorVec4(ImGuiCol_Header));
 	ImGui::PushStyleColor(ImGuiCol_HeaderActive, ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered));
 	ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive));
+	
+	if (quality != -1)
+		switch (quality)
+		{
+		case 0:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.69f, 0.76f, 0.85f, 1.f)); break;
+		case 1:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.29f, 0.41f, 1.f, 1.f)); break;
+		case 2:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.36f, 0.60f, 0.85f, 1.f)); break;
+		case 3:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.53f, 0.27f, 1.f, 1.f)); break;
+		case 4:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82f, 0.17f, 0.90f, 1.f)); break;
+		case 5:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.92f, 0.29f, 0.29f, 1.f)); break;
+		case 6:
+			ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.89f, 0.68f, 0.22f, 1.f)); break;
+		}
 
 	const auto state = ImGui::Selectable(label, selected);
 
-	ImGui::PopStyleColor(3);
+	if (quality != -1)
+		ImGui::PopStyleColor(4);
+	else
+		ImGui::PopStyleColor(3);
 
 	return state;
 }
@@ -276,8 +298,31 @@ bool listbox_group_paints(
 		{
 			index = item.id;
 			has_items = true;
-
 			if (selectable(item.name.c_str(), index == selected_item))
+				selected_item = index;
+		}
+		if (has_items)
+			ImGui::Separator();
+	}
+	ImGui::ListBoxFooter();
+
+	return current_value != selected_item;
+}
+
+bool listbox_group_paints(int& selected_item, std::vector<std::pair<std::string, std::pair<int, int>>> paint_kits, ImVec2 listbox_size) // skin name, [skin id, skin quailty]
+{
+	auto current_value = selected_item;
+	//listbox_size.y -= 80;
+	ImGui::ListBoxHeader("##paints", listbox_size);
+	{
+		auto has_items = false;
+		auto index = 0;
+		for (auto& item : paint_kits)
+		{
+			index = item.second.first;
+			has_items = true;
+
+			if (selectable(item.first.c_str(), index == selected_item, item.second.second))
 				selected_item = index;
 		}
 
@@ -1031,46 +1076,37 @@ void Menu::skins_tab()
 		ImGui::Checkbox("Enable Skins", &menu.config.skins_enable);
 		ImGui::Separator();
 
-		auto weapon_index = 0;
 		const auto weapons = get_weapons(true);
-		auto can_change_index = [weapons, &weapon_index]()
-		{
-			if (!csgo::local_player || !csgo::local_player->is_alive())
-				return false;
-
-			if (!csgo::local_player->active_weapon())
-				return false;
-
-			weapon_index = csgo::local_player->active_weapon()->item_definition_index();
-			return weapons.count(weapon_index) > 0;
-		};
-
-		const auto state = can_change_index();
 
 		ImGui::SetCursorPosX(-16);
 		ImGui::SetCursorPosY(ImGui::GetCursorPosY()-7);
-		listbox_group_weapons(menu.weapon_index, get_groups(true, false), weapons, get_listbox_size(261, state ? -5.f : -5.f));
-
+		listbox_group_weapons(menu.weapon_index, get_groups(true, false), weapons, get_listbox_size(261, -5.f));
+		
 		ImGui::SetCursorPosX((261 - 148)*.5);
 		ImGui::SetCursorPosY(ImGui::GetCursorPosY()-4);
 		if (ImGui::Button("Current Weapon"))
-			menu.weapon_index = weapon_index;
+		{
+			auto index = csgo::local_player->active_weapon()->item_definition_index();
+			if (index >= 500 && index < 5000) // if we have a knife model changed
+				index = csgo::local_player->team() == team::team_ct ? WEAPON_KNIFE : WEAPON_KNIFE_T;
+			menu.weapon_index = index;
+		}
 
 	} ImGui::EndChild(true, menu.font_child_title, main_red);
 	ImGui::PopStyleVar();
-
+	
 	ImGui::Dummy(ImVec2(0, 6));
 	ImGui::Dummy(ImVec2(6, 0)); ImGui::SameLine();
-
+		
 	ImGui::SetCursorPosY(46);
 	ImGui::SetCursorPosX(289);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(12, 24));
 	ImGui::BeginChild("Skins", ImVec2(261, 440), true, ImGuiWindowFlags_AlwaysUseWindowPadding | ImGuiWindowFlags_NoScrollbar);
 	{
 		ImGui::SetScrollY(0);
-		static auto show_all_kits = false;
+		static auto weapon_specific = false;
 		ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 5);
-		ImGui::Checkbox("Weapon specific", &show_all_kits);
+		ImGui::Checkbox("Weapon specific", &weapon_specific);
 		ImGui::Separator();
 
 		ImGui::Text("Knife Model");
@@ -1079,8 +1115,10 @@ void Menu::skins_tab()
 		ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 3);
 		ImGui::Text("Paint Kit");
 		ImGui::SetCursorPosX(-16);
-		//ImGui::SetCursorPosY(ImGui::GetCursorPosY()-12);
-		listbox_group_paints(menu.skin_index, parser_skins, get_listbox_size(261, -5.f));
+		if (weapon_specific)
+			listbox_group_paints(menu.skin_index, features::skins::get_weapon_skins((menu.weapon_index == WEAPON_KNIFE || menu.weapon_index == WEAPON_KNIFE_T) ? menu.knife_model : menu.weapon_index), get_listbox_size(261, -5.f));
+		else
+			listbox_group_paints(menu.skin_index, parser_skins, get_listbox_size(261, -5.f));
 
 	} ImGui::EndChild(true, menu.font_child_title, main_red);
 	ImGui::PopStyleVar();
@@ -1095,7 +1133,7 @@ void Menu::skins_tab()
 	{
 		if (ImGui::Button("Update", ImVec2(68, 30)))
 		{
-			features::skins::replace_paint_kit(menu.weapon_index, menu.skin_index, menu.knife_model);
+			features::skins::replace_paint_model_kit(menu.weapon_index, menu.skin_index, menu.knife_model);
 			force_update = true;
 		}		
 
