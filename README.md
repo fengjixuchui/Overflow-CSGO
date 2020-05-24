@@ -18,8 +18,8 @@ Injecting Steps:
 
 In the future ill remove the need for manually creating the directory 
 
-# GIf:
-![menu gif](gif.gif)
+# Gif:
+![Menu gif](gif.gif)
 
 # Pictures:
 
